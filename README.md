@@ -282,3 +282,15 @@ Debug the agent in the foreground, in two terminals:
 spice-vdagentd -x -d          # root
 spice-vdagent  -x -d          # desktop user
 ```
+
+## SliTaz 5.1 issues found (x86_64 cooking ISO, 10 Nov 2026)
+
+For the SliTaz developers; details and workarounds are in the sections above.
+
+1. `/etc/slitaz/cook.conf` has i486 values on x86_64 (also the one `cook setup` writes): every C package fails to configure.
+2. On an installed system, busybox `wget` gets "Connection reset by peer" from `https://mirror.slitaz.org`, so tazpkg cannot install anything until the mirror is switched to HTTP.
+3. `tazinst` does not install cookutils, although the live ISO has it.
+4. The ISO has no `virtio_pci`: virtio disks are invisible, and `linux-lts-virt` is needed for any virtio device.
+5. No virtual GPU driver (`virtio-gpu`, `qxl`, `bochs`) in any kernel package: under QEMU/KVM X always falls back to fbdev.
+6. No `spice-vdagent` package (receipts in this repo).
+7. Cook's strip step breaks Rust's `librustc_driver`, and busybox `unxz` fails on Rust's official `.tar.xz` (see [slitaz-kime](https://github.com/Otrona/slitaz-kime)).
