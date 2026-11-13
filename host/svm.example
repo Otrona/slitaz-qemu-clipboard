@@ -1,0 +1,9 @@
+#!/bin/sh
+# Example launcher (copy to ~/.local/bin/svm and adjust the paths).
+# Keeps the ISO and the virtual disk on an external drive.
+D=/run/media/$USER/YOUR-DRIVE/slit
+[ -d "$D" ] || { echo "External drive not mounted: $D" >&2; exit 1; }
+CPUS=6 MEM=8G BOOT=c \
+DISK=$D/slitaz.qcow2 \
+ISO=$D/slitaz-firefox-x86_64-cooking.iso \
+	exec ~/tmp/slitaz-qemu-clipboard/host/start-slitaz.sh

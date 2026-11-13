@@ -1,64 +1,105 @@
 # SliTaz 5.1 (x86_64) in QEMU: host ⇄ guest clipboard
 
 How to get copy and paste working between a Linux host and a SliTaz 5.1
-guest running in QEMU. SliTaz does not ship `spice-vdagent`, so this repo
-contains the receipts to cook it, the kernel modules it needs, and the
-fixes for every error hit along the way.
+guest running in QEMU, plus the VM setup fixes found along the way.
+SliTaz does not ship `spice-vdagent`, so this repo contains the receipts to
+cook it, the kernel modules it needs, and a fallback that needs no agent at
+all: a tiny HTTP clipboard bridge.
 
-It also includes a fallback that needs no agent at all: a tiny HTTP
-clipboard bridge between host and guest.
+> **Korean input?** kime for SliTaz 5.1 lives in its own repo:
+> [slitaz-kime](https://github.com/Otrona/slitaz-kime)
+> (SliTaz 5.1용 kime 한글 입력기).
 
 ## Tested setup
 
 | | |
 |---|---|
-| Host | Xubuntu 26.04 (X11), QEMU with a SPICE viewer |
-| Guest | SliTaz 5.1 cooking, x86_64 *firefox* ISO (built 10 Nov 2026) |
+| Host | Xubuntu 26.04 (X11), QEMU + KVM, SPICE viewer |
+| Guest | SliTaz 5.1 cooking, x86_64 *firefox* ISO (built 10 Nov 2026), installed to a virtual disk |
 | Guest kernel | 6.12.115-slitaz (`linux-lts`) |
 | Guest toolchain | GCC 6.3.0, glibc 2.20, GLib 2.56.4, GTK3 3.22.30 |
 
 ## Repository layout
 
 ```
-host/start-slitaz.sh        QEMU command line with the SPICE agent channel
-host/vmclip.py              fallback: host side of the HTTP clipboard bridge
+host/start-slitaz.sh        QEMU command line (SPICE agent channel, IDE disk)
+host/svm.example            example launcher with ISO and disk on an external drive
+host/vmclip.py              fallback clipboard: host side of the HTTP bridge
 guest/spice-agent.sh        loads kernel modules and starts spice-vdagentd (root)
-guest/hostclip, toclip      fallback: guest side of the HTTP clipboard bridge
-wok/spice-protocol/receipt  SliTaz receipt, spice-protocol 0.14.1
-wok/spice-vdagent/receipt   SliTaz receipt, spice-vdagent 0.20.0
-wok/xsel/receipt            SliTaz receipt, xsel 1.2.1 (needed by the fallback)
+guest/hostclip, toclip      fallback clipboard: guest side of the HTTP bridge
+guest/save.sh, restore.sh   save your work to an archive / restore it on a fresh system
+wok/spice-protocol          receipt, spice-protocol 0.14.1
+wok/spice-vdagent           receipt, spice-vdagent 0.20.0
+wok/xsel                    receipt, xsel 1.2.1 (used by the fallback clipboard)
 ```
+
+Copy a `wok/<package>` folder to `/home/slitaz/wok/` in the guest and run
+`cook <package>`.
 
 ---
 
-## 1. Start the VM (host)
+## 1. The VM
+
+### 1.1 Start QEMU
 
 ```sh
-ISO=~/Downloads/slitaz-firefox-x86_64-cooking.iso ./host/start-slitaz.sh
+qemu-img create -f qcow2 slitaz.qcow2 30G
+ISO=slitaz-firefox-x86_64-cooking.iso DISK=slitaz.qcow2 MEM=8G CPUS=6 ./host/start-slitaz.sh
 ```
 
-The lines that matter for the clipboard are the virtio serial port and
-the SPICE agent channel:
+After installing SliTaz to the disk, boot it with `BOOT=c`.
 
+- **The disk must be IDE, not virtio.** The ISO has no `virtio_pci` driver,
+  so a virtio disk is invisible to the installer (only `sr0` shows in
+  GParted), and an installed system on it could not find its root disk.
+- **KVM matters most for speed.** `/dev/kvm` must exist on the host (enable
+  SVM/VT-x in the firmware); inside the guest, `dmesg | grep -i hypervisor`
+  should say `KVM`.
+- **Graphics stay on fbdev.** SliTaz 5.1 ships no virtual GPU driver
+  (`virtio-gpu`, `qxl` or `bochs`), so X uses the slow fbdev driver whatever
+  `-vga` you pick, and the guest cannot follow the viewer's window size.
+
+### 1.2 Install to the disk
+
+1. Partition `/dev/sda` with GParted (msdos table, one ext4 partition).
+   Graphical tools as root: `tazbox su gparted`, not `su -` (which loses the
+   display: "cannot open display").
+2. Run the installer (`tazbox su tazinst`): full install to `/dev/sda1`, GRUB
+   on `/dev/sda`, BIOS.
+3. `poweroff`, then start QEMU with `BOOT=c`.
+
+### 1.3 After installing: network, mirror, cookutils
+
+The installed system needed three things the live session had:
+
+```sh
+# Network: make sure DHCP is configured (and run it once now)
+grep -E '^(INTERFACE|DHCP|STATIC)=' /etc/network.conf   # eth0 / yes / no
+udhcpc -i eth0
+
+# Mirror: busybox wget gets "Connection reset by peer" from the HTTPS mirror
+echo http://mirror.slitaz.org/x86_64/cooking/packages/ > /var/lib/tazpkg/mirror
+tazpkg recharge
+
+# cookutils is not installed by tazinst
+tazpkg get-install cookutils
+cook setup
 ```
--device virtio-serial-pci
--chardev spicevmc,id=vdagent,name=vdagent
--device virtserialport,chardev=vdagent,name=com.redhat.spice.0
-```
 
-The viewer (`-display spice-app`) needs `virt-viewer` on the host.
+Plain HTTP can in principle be tampered with on public networks; switch back
+to `https://` once it works again.
 
-## 2. Fix cook.conf on x86_64 (guest)
+### 1.4 Fix cook.conf (x86_64)
 
-On the x86_64 cooking ISO, `/etc/slitaz/cook.conf` still had i486 values.
-Every package that compiles C code fails with:
+`/etc/slitaz/cook.conf` on the x86_64 ISO (and the one `cook setup` writes)
+still has i486 values. Every package that compiles C code fails with:
 
 ```
 error: CPU you selected does not support x86-64 instruction set
 configure: error: C compiler cannot create executables
 ```
 
-Fix (as root):
+Fix, as root, after every `cook setup`:
 
 ```sh
 cp /etc/slitaz/cook.conf /etc/slitaz/cook.conf.bak
@@ -67,16 +108,23 @@ sed -i \
 	-e 's/i486-slitaz-linux/x86_64-slitaz-linux/g' \
 	-e 's/-march=i486/-march=x86-64 -mtune=generic/g' \
 	/etc/slitaz/cook.conf
-grep -n i486 /etc/slitaz/cook.conf    # should print nothing
+grep -c i486 /etc/slitaz/cook.conf    # must print 0
 ```
 
 Header-only packages (like spice-protocol) cook fine even with the wrong
 settings, because they never run the compiler. Don't let that mislead you.
 
-## 3. Cook spice-protocol and spice-vdagent (guest, root)
+Finished packages go to `/home/slitaz/packages`, build logs to
+`/home/slitaz/log/<package>.log`, configure logs to
+`/home/slitaz/wok/<package>/source/<package>-<version>/config.log`.
+
+---
+
+## 2. Clipboard with spice-vdagent
+
+### 2.1 Cook spice-protocol and spice-vdagent (root)
 
 ```sh
-cook setup                                   # once, if /home/slitaz does not exist
 cp -r wok/spice-protocol wok/spice-vdagent /home/slitaz/wok/
 
 cook spice-protocol
@@ -87,11 +135,7 @@ cook spice-vdagent
 tazpkg install /home/slitaz/packages/spice-vdagent-*.tazpkg
 ```
 
-Finished packages go to the `PKGS=` path in `cook.conf`
-(`/home/slitaz/packages` by default). Build logs are in
-`/home/slitaz/log/<package>.log`.
-
-### Why these versions
+Why these versions:
 
 - **spice-vdagent 0.21 and newer need GLib ≥ 2.58.** SliTaz 5.1 has 2.56.4.
 - **spice-vdagent 0.20.0** declares GLib 2.50 but uses one 2.58 macro,
@@ -102,20 +146,15 @@ Finished packages go to the `PKGS=` path in `cook.conf`
 - 0.20.0 predates the security fixes of 0.21 (CVE-2020-25650 to 25653).
   Acceptable for an agent inside your own VM talking to your own QEMU.
 
-## 4. Kernel modules (guest, root)
+### 2.2 Kernel modules (root)
 
-The SliTaz kernel is split into module packages. The agent needs three
-drivers:
+The SliTaz kernel is split into module packages. The agent needs:
 
 | Module | Package | Purpose |
 |---|---|---|
 | `virtio_pci` | `linux-lts-virt` | connects virtio devices to the PCI bus |
 | `virtio_console` | `linux-lts-extra` | provides `/dev/virtio-ports/*` |
-| `uinput` | already available (no extra package needed) | spice-vdagentd exits without `/dev/uinput` |
-
-All `modprobe` commands must run as **root**. As a normal user they fail
-with `Operation not permitted`, which is easy to mistake for a missing
-module.
+| `uinput` | already available | spice-vdagentd exits without `/dev/uinput` |
 
 ```sh
 tazpkg info linux-lts-virt     # Version must equal `uname -r` (6.12.115)
@@ -124,6 +163,8 @@ tazpkg get-install linux-lts-extra
 depmod -a
 ```
 
+- All `modprobe` commands must run as **root**; as a normal user they fail
+  with `Operation not permitted`, which looks like a missing module.
 - Install only `linux-lts-*` packages whose version matches `uname -r`.
   `linux-kvm` and `linux-libre-kvm` belong to other kernels.
 - Do not upgrade `linux-lts` itself in a live session (see the 5.1 release
@@ -138,66 +179,34 @@ done
 # a line ending in 0x1003 (or 0x1043) = virtio serial device present
 ```
 
-## 5. Start the agent
+### 2.3 Start the agent
 
-As root:
+As root: `sh guest/spice-agent.sh`. As the desktop user, inside X:
+`spice-vdagent &`. Plain Ctrl+C / Ctrl+V then works in both directions.
 
-```sh
-sh guest/spice-agent.sh
-```
+To make it permanent, add the lines of `guest/spice-agent.sh` (or a call to
+it) to `/etc/init.d/local.sh`, and `spice-vdagent &` to
+`~/.config/openbox/autostart.sh`.
 
-As the desktop user (tux), inside the X session:
+**Mouse:** with the agent running, SPICE's client mouse mode gives a free
+mouse (no Shift+F12). Before the agent starts (boot, login screen) click into
+the window to grab the mouse. Do not add `-device usb-tablet`: it conflicts
+with the agent. If the cursor jumps around, set the viewer to normal zoom and
+turn off its automatic resize (fbdev cannot resize).
 
-```sh
-spice-vdagent &
-```
+### 2.4 Alternative: HTTP clipboard bridge (no agent, no kernel modules)
 
-Plain Ctrl+C / Ctrl+V now works in both directions.
-
-To make it permanent: add `sh /path/to/spice-agent.sh` to
-`/etc/init.d/local.sh`, and `spice-vdagent &` to the user's Openbox
-autostart (`~/.config/openbox/autostart.sh`).
-
-## 6. Troubleshooting (errors met and their fixes)
-
-| Error | Cause | Fix |
-|---|---|---|
-| `CPU you selected does not support x86-64` | i486 values in `cook.conf` | section 2 |
-| `unknown dep libpciaccess-dev` | SliTaz prefixes X.org libraries with `xorg-` | use `xorg-libpciaccess-dev` |
-| `Unknown initscript flavour no` | `--with-init-script=no` is not valid in 0.20.0 | omit the option (default `check`) |
-| `spice-protocol >= 0.14.1` required | spice-protocol 0.12.x installed | cook 0.14.1, install with `--forced` |
-| `Module virtio_console not found` | module not installed | `linux-lts-extra` |
-| no `/sys/bus/virtio` after loading `virtio_console` | `virtio_pci` missing | `linux-lts-virt` |
-| agent: `connected` … `disconnected` right away | daemon died; read the daemon log | run `spice-vdagentd -x -d` |
-| daemon: `open /dev/uinput: No such file` / `Fatal uinput error` | `uinput` not loaded | `modprobe uinput` as root (or `mknod /dev/uinput c 10 223`) |
-| `modprobe: ... Operation not permitted` | ran as a normal user | `su -`, then `modprobe` |
-
-Debug both halves in the foreground, in two terminals:
-
-```sh
-spice-vdagentd -x -d          # root
-spice-vdagent  -x -d          # desktop user
-```
-
----
-
-## Alternative: HTTP clipboard bridge (no agent, no kernel modules)
-
-Useful before spice-vdagent is built, or on a VM started without the SPICE
-channel. With QEMU's default user-mode networking, the guest reaches the
-host at `10.0.2.2`.
+Useful before spice-vdagent is built, or on a VM without the SPICE channel.
+With QEMU's user networking the guest reaches the host at `10.0.2.2`, which
+maps to the host's `127.0.0.1`.
 
 **Host** (needs `python3` and `xclip`; `wl-clipboard` on Wayland):
 
 ```sh
-sudo apt install xclip
-python3 host/vmclip.py &
+python3 host/vmclip.py &      # listens on 127.0.0.1:8765 only
 ```
 
-The server listens on `127.0.0.1:8765` only; QEMU's user networking still
-lets the guest in.
-
-**Guest** (needs `xsel`; cook it from `wok/xsel`):
+**Guest** (needs `xsel`, from `wok/xsel`, and `curl` for `toclip`):
 
 ```sh
 cp guest/hostclip guest/toclip /usr/local/bin/
@@ -211,8 +220,9 @@ chmod +x /usr/local/bin/hostclip /usr/local/bin/toclip
 | `hostclip > file` | write host clipboard straight to a file (works without xsel) |
 | `cmd \| toclip` | send command output to the host clipboard |
 
-Hotkeys, inside `<keyboard>` of the Openbox config (find the file with
-`cat /proc/$(pidof openbox)/cmdline | tr '\0' ' '`):
+Openbox hotkeys, inside `<keyboard>` of the Openbox config (find the file
+with `cat /proc/$(pidof openbox)/cmdline | tr '\0' ' '`), then
+`openbox --reconfigure`:
 
 ```xml
 <keybind key="C-A-v">
@@ -223,22 +233,52 @@ Hotkeys, inside `<keyboard>` of the Openbox config (find the file with
 </keybind>
 ```
 
-Then `openbox --reconfigure`.
+---
 
-`hostclip > /home/slitaz/wok/<pkg>/receipt` is the most reliable way to
-move receipts into the guest: text arrives byte for byte, with no curly
-quotes or dashes from copy and paste.
+## 3. Save and restore
+
+The live system keeps everything in RAM, and the installed system empties
+`/tmp` at boot. `guest/save.sh` (root) packs cooked packages, the kernel
+module packages, cookutils, receipts, sources and config into
+`/root/slitaz-save.tgz`. Move it between host and guest with netcat; nothing
+stays listening, and `127.0.0.1` is not reachable from the network:
+
+```sh
+nc -l 127.0.0.1 9000 > ~/tmp/slitaz-save.tgz     # host: receive
+nc 10.0.2.2 9000 < /root/slitaz-save.tgz         # guest: send
+
+nc -l 127.0.0.1 9000 < ~/tmp/slitaz-save.tgz     # host: serve
+nc 10.0.2.2 9000 > /root/s.tgz                   # guest: receive
+tar xzf /root/s.tgz -C /root && sh /root/slitaz-save/restore.sh
+```
+
+Compare `md5sum` on both sides. If the guest's `nc` does not exit by itself,
+press Ctrl+C once the host's `nc` has returned.
 
 ---
 
-## Notes
+## Troubleshooting
 
-- **Live sessions forget everything on reboot.** Install SliTaz to a
-  virtual disk (`qemu-img create -f qcow2 slitaz.qcow2 20G` and
-  `-drive file=slitaz.qcow2,if=ide`), or save `/home/slitaz/wok`,
-  `/home/slitaz/packages` and `/etc/slitaz/cook.conf` to the host first.
-- **Seamless mouse:** with spice-vdagent running, SPICE uses client mouse
-  mode and no Shift+F12 is needed. Do not also add `-device usb-tablet`:
-  it conflicts with the agent.
-  `-device qemu-xhci -device usb-tablet` to the QEMU line.
-  Not yet tested on this setup.
+| Error | Cause | Fix |
+|---|---|---|
+| `CPU you selected does not support x86-64` | i486 values in `cook.conf` | section 1.4 |
+| `Command 'cook' not found` on the installed system | tazinst does not install cookutils | `tazpkg get-install cookutils` |
+| tazpkg: `Recharging failed`, `wget: ... Connection reset by peer` | busybox wget vs. the HTTPS mirror | use the `http://` mirror (1.3) |
+| GParted shows only `sr0` | virtio disk, no `virtio_pci` on the ISO | IDE disk (1.1) |
+| `cannot open display` after `su -` | `su -` drops the X environment | `tazbox su <program>` |
+| `unknown dep libpciaccess-dev` | SliTaz prefixes X.org libraries with `xorg-` | `xorg-libpciaccess-dev` |
+| `Unknown initscript flavour no` | `--with-init-script=no` invalid in 0.20.0 | omit the option |
+| `spice-protocol >= 0.14.1` required | spice-protocol 0.12.x installed | cook 0.14.1, install with `--forced` |
+| `Module virtio_console not found` | module not installed | `linux-lts-extra` |
+| no `/sys/bus/virtio` after loading `virtio_console` | `virtio_pci` missing | `linux-lts-virt` |
+| `modprobe: ... Operation not permitted` | ran as a normal user | `su -`, then `modprobe` |
+| agent: `connected` … `disconnected` right away | the daemon died; read its log | `spice-vdagentd -x -d` |
+| daemon: `open /dev/uinput: No such file` / `Fatal uinput error` | `uinput` not loaded | `modprobe uinput` as root |
+| xsel cook fails | missing build deps | autoconf, automake, libtool, `xorg-libXt-dev` |
+
+Debug the agent in the foreground, in two terminals:
+
+```sh
+spice-vdagentd -x -d          # root
+spice-vdagent  -x -d          # desktop user
+```
