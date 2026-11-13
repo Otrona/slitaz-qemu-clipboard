@@ -20,7 +20,7 @@ set -- \
 	-device virtserialport,chardev=vdagent,name=com.redhat.spice.0 \
 	-display spice-app
 
-[ -n "$DISK" ] && set -- "$@" -drive file="$DISK",if=virtio
+[ -n "$DISK" ] && set -- "$@" -drive file="$DISK",if=ide
 [ -n "$TABLET" ] && set -- "$@" -device qemu-xhci -device usb-tablet
 
 exec qemu-system-x86_64 "$@"

@@ -235,7 +235,7 @@ quotes or dashes from copy and paste.
 
 - **Live sessions forget everything on reboot.** Install SliTaz to a
   virtual disk (`qemu-img create -f qcow2 slitaz.qcow2 20G` and
-  `-drive file=slitaz.qcow2,if=virtio`), or save `/home/slitaz/wok`,
+  `-drive file=slitaz.qcow2,if=ide`), or save `/home/slitaz/wok`,
   `/home/slitaz/packages` and `/etc/slitaz/cook.conf` to the host first.
 - **Seamless mouse (no Shift+F12 release):** add
   `-device qemu-xhci -device usb-tablet` to the QEMU line.
