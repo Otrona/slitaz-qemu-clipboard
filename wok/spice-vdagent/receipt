@@ -1,0 +1,35 @@
+# SliTaz package receipt.
+
+PACKAGE="spice-vdagent"
+VERSION="0.20.0"
+CATEGORY="x-window"
+SHORT_DESC="SPICE guest agent: clipboard sharing and display resize"
+MAINTAINER="nanotron@gmx.com"
+LICENSE="GPL3"
+WEB_SITE="https://www.spice-space.org"
+
+TARBALL="$PACKAGE-$VERSION.tar.bz2"
+WGET_URL="https://www.spice-space.org/download/releases/$TARBALL"
+
+DEPENDS="glib gtk+3 alsa-lib dbus libdrm xorg-libpciaccess \
+	xorg-libX11 xorg-libXfixes xorg-libXrandr xorg-libXinerama"
+BUILD_DEPENDS="spice-protocol glib-dev gtk+3-dev alsa-lib-dev dbus-dev \
+	libdrm-dev xorg-libpciaccess-dev xorg-libX11-dev xorg-libXfixes-dev \
+	xorg-libXrandr-dev xorg-libXinerama-dev pkg-config"
+
+compile_rules() {
+	cd $src
+	# GLib 2.56 compatibility: G_SOURCE_FUNC only exists from GLib 2.58
+	sed -i 's/G_SOURCE_FUNC(\([A-Za-z0-9_]*\))/(GSourceFunc)(\1)/g' \
+		src/*.c src/*/*.c
+	# No systemd or ConsoleKit on SliTaz: one X session, no init script
+	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+		--with-session-info=none \
+		$CONFIGURE_ARGS
+	make && make DESTDIR=$DESTDIR install
+}
+
+genpkg_rules() {
+	mkdir -p $fs
+	cp -a $install/* $fs
+}

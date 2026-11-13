@@ -1,0 +1,29 @@
+# SliTaz package receipt.
+
+PACKAGE="xsel"
+VERSION="1.2.1"
+CATEGORY="x-window"
+SHORT_DESC="Command-line access to the X selection and clipboard"
+MAINTAINER="nanotron@gmx.com"
+LICENSE="MIT"
+WEB_SITE="https://github.com/kfish/xsel"
+
+TARBALL="$PACKAGE-$VERSION.tar.gz"
+WGET_URL="https://github.com/kfish/xsel/archive/refs/tags/$VERSION.tar.gz"
+
+DEPENDS="xorg-libX11"
+BUILD_DEPENDS="autoconf automake libtool pkg-config \
+	xorg-libX11-dev xorg-libXt-dev"
+
+compile_rules() {
+	cd $src
+	# The GitHub archive has no generated configure script
+	autoreconf -fi
+	./configure --prefix=/usr $CONFIGURE_ARGS
+	make && make DESTDIR=$DESTDIR install
+}
+
+genpkg_rules() {
+	mkdir -p $fs/usr/bin
+	cp -a $install/usr/bin/xsel $fs/usr/bin
+}

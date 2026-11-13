@@ -1,0 +1,28 @@
+# SliTaz package receipt.
+
+PACKAGE="spice-protocol"
+VERSION="0.14.1"
+CATEGORY="development"
+SHORT_DESC="SPICE protocol headers"
+MAINTAINER="nanotron@gmx.com"
+LICENSE="BSD"
+WEB_SITE="https://www.spice-space.org"
+
+TARBALL="$PACKAGE-$VERSION.tar.bz2"
+WGET_URL="https://www.spice-space.org/download/releases/$TARBALL"
+
+compile_rules() {
+	cd $src
+	if [ -x configure ]; then
+		./configure --prefix=/usr $CONFIGURE_ARGS &&
+		make && make DESTDIR=$DESTDIR install
+	else
+		meson setup build --prefix=/usr &&
+		ninja -C build && DESTDIR=$DESTDIR ninja -C build install
+	fi
+}
+
+genpkg_rules() {
+	mkdir -p $fs
+	cp -a $install/* $fs
+}

@@ -1,0 +1,14 @@
+#!/bin/sh
+# hostclip     : print the host clipboard (e.g. hostclip > file)
+# hostclip -c  : load the host clipboard into the guest clipboard
+# Needs host/vmclip.py running on the host; -c needs xclip or xsel.
+URL=http://10.0.2.2:8765/
+if [ "$1" = "-c" ]; then
+	if command -v xclip >/dev/null; then
+		wget -qO- "$URL" | xclip -i -selection clipboard
+	else
+		wget -qO- "$URL" | xsel -ib
+	fi
+else
+	wget -qO- "$URL"
+fi
