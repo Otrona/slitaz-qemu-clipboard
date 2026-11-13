@@ -237,6 +237,8 @@ quotes or dashes from copy and paste.
   virtual disk (`qemu-img create -f qcow2 slitaz.qcow2 20G` and
   `-drive file=slitaz.qcow2,if=ide`), or save `/home/slitaz/wok`,
   `/home/slitaz/packages` and `/etc/slitaz/cook.conf` to the host first.
-- **Seamless mouse (no Shift+F12 release):** add
+- **Seamless mouse:** with spice-vdagent running, SPICE uses client mouse
+  mode and no Shift+F12 is needed. Do not also add `-device usb-tablet`:
+  it conflicts with the agent.
   `-device qemu-xhci -device usb-tablet` to the QEMU line.
   Not yet tested on this setup.

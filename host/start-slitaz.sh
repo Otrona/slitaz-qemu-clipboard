@@ -13,7 +13,7 @@ CPUS=${CPUS:-4}
 
 set -- \
 	-enable-kvm -cpu host -smp "$CPUS" -m "$MEM" \
-	-cdrom "$ISO" -boot d \
+	-cdrom "$ISO" -boot c \
 	-vga qxl \
 	-device virtio-serial-pci \
 	-chardev spicevmc,id=vdagent,name=vdagent \
