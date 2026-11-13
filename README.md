@@ -294,3 +294,7 @@ For the SliTaz developers; details and workarounds are in the sections above.
 5. No virtual GPU driver (`virtio-gpu`, `qxl`, `bochs`) in any kernel package: under QEMU/KVM X always falls back to fbdev.
 6. No `spice-vdagent` package (receipts in this repo).
 7. Cook's strip step breaks Rust's `librustc_driver`, and busybox `unxz` fails on Rust's official `.tar.xz` (see [slitaz-kime](https://github.com/Otrona/slitaz-kime)).
+
+## License
+
+The scripts and receipts in this repository are licensed under GPL-3.0 (see [LICENSE](LICENSE)).
