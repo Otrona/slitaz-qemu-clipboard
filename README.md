@@ -185,8 +185,9 @@ As root: `sh guest/spice-agent.sh`. As the desktop user, inside X:
 `spice-vdagent &`. Plain Ctrl+C / Ctrl+V then works in both directions.
 
 To make it permanent, add the lines of `guest/spice-agent.sh` (or a call to
-it) to `/etc/init.d/local.sh`, and `spice-vdagent &` to
-`~/.config/openbox/autostart.sh`.
+it) to `/etc/init.d/local.sh`. The session agent needs no setup: the
+spice-vdagent package starts it at login through
+`/etc/xdg/autostart/spice-vdagent.desktop`.
 
 **Mouse:** with the agent running, SPICE's client mouse mode gives a free
 mouse (no Shift+F12). Before the agent starts (boot, login screen) click into
