@@ -2,9 +2,10 @@
 
 How to get copy and paste working between a Linux host and a SliTaz 5.1
 guest running in QEMU, plus the VM setup fixes found along the way.
-SliTaz does not ship `spice-vdagent`, so this repo contains the receipts to
-cook it, the kernel modules it needs, and a fallback that needs no agent at
-all: a tiny HTTP clipboard bridge.
+Since November 2026 `spice-vdagent` is an official SliTaz package
+(`tazpkg get-install spice-vdagent`). This repo keeps the original receipts,
+the notes on the kernel modules it needs, and a fallback that needs no agent
+at all: a tiny HTTP clipboard bridge.
 
 > **Korean input?** kime for SliTaz 5.1 lives in its own repo:
 > [slitaz-kime](https://github.com/Otrona/slitaz-kime)
@@ -68,26 +69,20 @@ After installing SliTaz to the disk, boot it with `BOOT=c`.
    on `/dev/sda`, BIOS.
 3. `poweroff`, then start QEMU with `BOOT=c`.
 
-### 1.3 After installing: network, mirror, cookutils
+### 1.3 After installing: network, cookutils
 
-The installed system needed three things the live session had:
+The installed system needed two things the live session had:
 
 ```sh
 # Network: make sure DHCP is configured (and run it once now)
 grep -E '^(INTERFACE|DHCP|STATIC)=' /etc/network.conf   # eth0 / yes / no
 udhcpc -i eth0
 
-# Mirror: busybox wget gets "Connection reset by peer" from the HTTPS mirror
-echo http://mirror.slitaz.org/x86_64/cooking/packages/ > /var/lib/tazpkg/mirror
-tazpkg recharge
-
 # cookutils is not installed by tazinst
 tazpkg get-install cookutils
 cook setup
 ```
 
-Plain HTTP can in principle be tampered with on public networks; switch back
-to `https://` once it works again.
 
 ### 1.4 Fix cook.conf (x86_64)
 
@@ -122,18 +117,19 @@ Finished packages go to `/home/slitaz/packages`, build logs to
 
 ## 2. Clipboard with spice-vdagent
 
-### 2.1 Cook spice-protocol and spice-vdagent (root)
+### 2.1 Install spice-vdagent (root)
+
+spice-vdagent, spice-protocol and xsel are official SliTaz packages
+(x86_64) since November 2026:
 
 ```sh
-cp -r wok/spice-protocol wok/spice-vdagent /home/slitaz/wok/
-
-cook spice-protocol
-tazpkg install /home/slitaz/packages/spice-protocol-*.tazpkg --forced
-pkg-config --modversion spice-protocol      # 0.14.1
-
-cook spice-vdagent
-tazpkg install /home/slitaz/packages/spice-vdagent-*.tazpkg
+tazpkg get-install spice-vdagent
 ```
+
+This also pulls in the kernel module packages of 2.2. To cook it yourself,
+use the receipts in the SliTaz wok, or the originals in `wok/` here:
+`cp -r wok/spice-protocol wok/spice-vdagent /home/slitaz/wok/`, then
+`cook spice-protocol` and `cook spice-vdagent`.
 
 Why these versions:
 
@@ -181,13 +177,16 @@ done
 
 ### 2.3 Start the agent
 
-As root: `sh guest/spice-agent.sh`. As the desktop user, inside X:
-`spice-vdagent &`. Plain Ctrl+C / Ctrl+V then works in both directions.
+The package has an init script. To start the daemon at every boot, add
+`spice-vdagentd` to `RUN_DAEMONS` in `/etc/rcS.conf`; to start it now:
 
-To make it permanent, add the lines of `guest/spice-agent.sh` (or a call to
-it) to `/etc/init.d/local.sh`. The session agent needs no setup: the
-spice-vdagent package starts it at login through
-`/etc/xdg/autostart/spice-vdagent.desktop`.
+```sh
+/etc/init.d/spice-vdagentd start      # root
+```
+
+The session agent starts at login by itself (XDG autostart), so log out and
+in once. Plain Ctrl+C / Ctrl+V then works in both directions.
+`guest/spice-agent.sh` does the same as the init script, by hand.
 
 **Mouse:** with the agent running, SPICE's client mouse mode gives a free
 mouse (no Shift+F12). Before the agent starts (boot, login screen) click into
@@ -264,7 +263,6 @@ press Ctrl+C once the host's `nc` has returned.
 |---|---|---|
 | `CPU you selected does not support x86-64` | i486 values in `cook.conf` | section 1.4 |
 | `Command 'cook' not found` on the installed system | tazinst does not install cookutils | `tazpkg get-install cookutils` |
-| tazpkg: `Recharging failed`, `wget: ... Connection reset by peer` | busybox wget vs. the HTTPS mirror | use the `http://` mirror (1.3) |
 | GParted shows only `sr0` | virtio disk, no `virtio_pci` on the ISO | IDE disk (1.1) |
 | `cannot open display` after `su -` | `su -` drops the X environment | `tazbox su <program>` |
 | `unknown dep libpciaccess-dev` | SliTaz prefixes X.org libraries with `xorg-` | `xorg-libpciaccess-dev` |
